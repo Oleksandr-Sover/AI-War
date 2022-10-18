@@ -71,6 +71,7 @@ public class SoldierVision : MonoBehaviour
     private float sqrDistanceToCorner;
     private float sqrDistanceToHit;
     private float sqrMinDistanceToCorner;
+    private float lookWhereGoTimer;
 
     private int cornerIndex;
     private int numberViewsShelters;
@@ -86,6 +87,7 @@ public class SoldierVision : MonoBehaviour
     public bool findedNearestEnemy;
     public bool aimedAtTarget = false;
     public bool enemyWasVisible;
+    public bool lookWhereGoing;
     private bool setSearchValues = true;
     private bool setRandomAngleOfShelter = true;
     private bool setLookAroundValues = true;
@@ -100,6 +102,7 @@ public class SoldierVision : MonoBehaviour
         minLengthToSelter = maxLengthToShelter / 2;
         maxSqrLengthToShelter = maxLengthToShelter * maxLengthToShelter;
         minSqrLengthToSelter = minLengthToSelter * minLengthToSelter;
+        lookWhereGoTimer = Random.Range(2f, 8f);
     }
 
     void Update()
@@ -112,15 +115,19 @@ public class SoldierVision : MonoBehaviour
 
         if (visibleConstructions.Count > 0)
         {
-           //if the soldier is approaching the shelter, we pass the opposite point of the shelter
-           //for inspection
-           IsItNearConstruction(visibleConstructions, maxSqrLengthToShelter, minSqrLengthToSelter);
+            //if the soldier is approaching the shelter, we pass the opposite point of the shelter
+            //for inspection
+            IsItNearConstruction(visibleConstructions, maxSqrLengthToShelter, minSqrLengthToSelter);
+            Debug.DrawRay(transform.position, directionToNearestShelter, Color.yellow);
         }
         else
         {
             nextToShelter = false;
             tooNearToShelter = false;
         }
+
+        if (lookWhereGoTimer > 0)
+            lookWhereGoTimer -= Time.deltaTime;
 
         if (soldierMovement.crashed)
         {
@@ -143,9 +150,19 @@ public class SoldierVision : MonoBehaviour
             aimedAtEnemy = AimRotation(target.position, speedAimRotation, 0.997f);
         }
 
+        else if (lookWhereGoTimer < 0 && soldierMovement.movement != Vector3.zero)
+        {
+            movementPoint = soldierMovement.movement + transform.position;
+
+            if (AimRotation(movementPoint, speedRotation, 0.997f))
+                lookWhereGoTimer = Random.Range(2f, 8f);
+
+            Debug.DrawRay(transform.position, Vector3.up * 5, Color.white);
+        }
+
         else if (enemyWasVisible)
             //trace the position where the enemy disappeared  
-            enemyWasVisible = SeeWhereEnemyMightAppear(target.position, 100f, 200f);
+            enemyWasVisible = SeeWhereEnemyMightAppear(target.position, 5f, 15f);
 
         else if (soldierMovement.seeWhereGoing && soldierMovement.movement != Vector3.zero)
         {
@@ -180,8 +197,6 @@ public class SoldierVision : MonoBehaviour
             //draw borders of the review of the soldier
             Debug.DrawRay(transform.position, BorderFOV(halfAngleFOV), Color.blue);
             Debug.DrawRay(transform.position, BorderFOV(-halfAngleFOV), Color.blue);
-            //
-            Debug.DrawRay(transform.position, directionToNearestShelter, Color.yellow);
         #endif
     }
 
@@ -515,7 +530,7 @@ public class SoldierVision : MonoBehaviour
         {
             directionTarget = coll.transform.position - transform.position;
 
-            if (IsVisibleInFOV(directionTarget) && RayHitTest(coll.transform, directionTarget))
+            if (RayHitTest(coll.transform, directionTarget))
             {
                 sqrLengthTest = directionTarget.sqrMagnitude;
 
@@ -523,14 +538,40 @@ public class SoldierVision : MonoBehaviour
                     Debug.DrawRay(transform.position, directionTarget, Color.red);
                 #endif
 
-                if (sqrLengthTest < sqrLengthNearEnemy || sqrLengthNearEnemy == 0)
+                if (sqrLengthTest < 10)
                 {
                     sqrLengthNearEnemy = sqrLengthTest;
                     target = coll.transform;
                     findedNearestEnemy = true;
                 }
+                else if (IsVisibleInFOV(directionTarget))
+                {
+                    if (sqrLengthTest < sqrLengthNearEnemy || sqrLengthNearEnemy == 0)
+                    {
+                        sqrLengthNearEnemy = sqrLengthTest;
+                        target = coll.transform;
+                        findedNearestEnemy = true;
+                    }
+                }
             }
+
+            //if (IsVisibleInFOV(directionTarget) && RayHitTest(coll.transform, directionTarget))
+            //{
+            //    sqrLengthTest = directionTarget.sqrMagnitude;
+
+            //    #if UNITY_EDITOR
+            //        Debug.DrawRay(transform.position, directionTarget, Color.red);
+            //    #endif
+
+            //    if (sqrLengthTest < sqrLengthNearEnemy || sqrLengthNearEnemy == 0)
+            //    {
+            //        sqrLengthNearEnemy = sqrLengthTest;
+            //        target = coll.transform;
+            //        findedNearestEnemy = true;
+            //    }
+            //}
         }
+        
     }
 
     private bool AimRotation(Vector3 position, float speedRot, float dotPrecision)
@@ -577,18 +618,6 @@ public class SoldierVision : MonoBehaviour
 
     private void OnDrawGizmos()
     {
-        if (objectsInTrigger.ourTeamInTrigg.Count > 0)
-        {
-            Gizmos.color = Color.green;
-
-            foreach (var coll in objectsInTrigger.ourTeamInTrigg)
-            {
-                Vector3 dir = coll.transform.position - transform.position;
-                if (IsVisibleInFOV(dir) && RayHitTest(coll.transform, dir))
-                    Gizmos.DrawRay(transform.position, dir);
-            }
-        }
-
         if (visibleConstructions.Count > 0)
         {
             Gizmos.color = Color.green;

@@ -9,7 +9,7 @@ public class ObjectsInTrigger : MonoBehaviour
     [HideInInspector] public List<Collider> enemiesInTrigg = new List<Collider>();
     [HideInInspector] public List<Collider> ourTeamInTrigg = new List<Collider>(); //temporary list
     private List<Collider> constructionsEnter = new List<Collider>();
-    private List <Collider> constructionsExit = new List<Collider>();
+    private List<Collider> constructionsExit = new List<Collider>();
 
     [HideInInspector] public List<Construction> constructionsInTrigg = new List<Construction>();
 

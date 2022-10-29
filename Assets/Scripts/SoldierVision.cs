@@ -1,13 +1,13 @@
 using System.Collections;
 using System.Collections.Generic;
-using System.Linq;
 using UnityEngine;
 
 public class SoldierVision : MonoBehaviour
 {
     public ObjectsInTrigger objectsInTrigger;
     public SoldierMovement soldierMovement;
-    public Structures structures;
+    private Structures structures;
+    private Team team;
 
     [HideInInspector] public List<Construction> visibleConstructions = new List<Construction>();
     private List<Construction> tempVisibleConstruction = new List<Construction>();
@@ -23,10 +23,11 @@ public class SoldierVision : MonoBehaviour
 
     [HideInInspector] public Vector3 oppositePoint;
     [HideInInspector] public Vector3 directionToNearestShelter;
-    [HideInInspector] public Vector3 nearestCorner;
+    [HideInInspector] public Vector3 directionToNearestCorner;
     [HideInInspector] public Vector3 nearestPoint;
     [HideInInspector] public Vector3 targetLossPoint;
     [HideInInspector] public Vector3 searchDirection;
+    private Vector3 nearestCorner;
     private Vector3 tempNearestCorner;
     private Vector3 directionTarget;
     private Vector3 directionTargetHorizont;
@@ -37,10 +38,8 @@ public class SoldierVision : MonoBehaviour
     private Vector3 angularVelocity;
     private Vector3 angularVelocityRight = new Vector3(0, 35f, 0);
     private Vector3 angularVelocityLeft = new Vector3(0, -35f, 0);
-    
     private Vector3 lookAroundPoint;
     private Vector3 movementPoint;
-
     private Vector3 cornerDirection;
     private Vector3 maxDotCorner;
     private Vector3 dirToCorner;
@@ -88,10 +87,16 @@ public class SoldierVision : MonoBehaviour
     public bool aimedAtTarget = false;
     public bool enemyWasVisible;
     public bool lookWhereGoing;
-    private bool setSearchValues = true;
+    public bool setSearchValues = true;
     private bool setRandomAngleOfShelter = true;
     private bool setLookAroundValues = true;
     private bool setListsConstructAndCorner = true;
+
+    void Awake()
+    {
+        structures = FindObjectOfType<Structures>();
+        team = GetComponentInParent<Team>();
+    }
 
     void Start()
     {
@@ -118,7 +123,7 @@ public class SoldierVision : MonoBehaviour
             //if the soldier is approaching the shelter, we pass the opposite point of the shelter
             //for inspection
             IsItNearConstruction(visibleConstructions, maxSqrLengthToShelter, minSqrLengthToSelter);
-            Debug.DrawRay(transform.position, directionToNearestShelter, Color.yellow);
+            Debug.DrawRay(transform.position, directionToNearestShelter, Color.white);
         }
         else
         {
@@ -146,30 +151,18 @@ public class SoldierVision : MonoBehaviour
         {
             enemyWasVisible = true;
             setSearchValues = true;
-            //aiming at the nearest enemy
-            aimedAtEnemy = AimRotation(target.position, speedAimRotation, 0.997f);
+            targetLossPoint = target.position;
+            aimedAtEnemy = AimRotation(target.position, speedAimRotation, 0.997f); //aiming at the nearest enemy
         }
 
         else if (lookWhereGoTimer < 0 && soldierMovement.movement != Vector3.zero)
-        {
-            movementPoint = soldierMovement.movement + transform.position;
-
-            if (AimRotation(movementPoint, speedRotation, 0.997f))
-                lookWhereGoTimer = Random.Range(2f, 8f);
-
-            Debug.DrawRay(transform.position, Vector3.up * 5, Color.white);
-        }
+            //periodically checks where are going
+            SeeWhereGoing(2f, 8f);
 
         else if (enemyWasVisible)
-            //trace the position where the enemy disappeared  
-            enemyWasVisible = SeeWhereEnemyMightAppear(target.position, 5f, 15f);
-
-        else if (soldierMovement.seeWhereGoing && soldierMovement.movement != Vector3.zero)
         {
-            movementPoint = soldierMovement.movement + transform.position;
-            //look in the direction of movement
-            if (AimRotation(movementPoint, speedRotation, 0.95f))
-                soldierMovement.seeWhereGoing = false;
+            //trace the position where the enemy disappeared  
+            enemyWasVisible = SeeWhereEnemyMightAppear(targetLossPoint, 10, 20);
         }
 
         else if (nextToShelter)
@@ -178,14 +171,15 @@ public class SoldierVision : MonoBehaviour
 
         else if (visibleCorners.Count > 3)
             //inspect all visible corner of shelters one by one, randomly
-            InspectRandomCorner(1.5f, 2.5f);
+            InspectRandomAllCorner(1.5f, 2.5f);
 
         else if (visibleCorners.Count > 0)
-        //
         {
             if (numberViewsShelters > 0)
-                InspectRandomCornerOfStructures(2f, 4f);
+                //
+                InspectRandomSomeCorner(2f, 4f);
             else
+                //
                 FreeInspectBetweenInspection();
         }
 
@@ -197,6 +191,11 @@ public class SoldierVision : MonoBehaviour
             //draw borders of the review of the soldier
             Debug.DrawRay(transform.position, BorderFOV(halfAngleFOV), Color.blue);
             Debug.DrawRay(transform.position, BorderFOV(-halfAngleFOV), Color.blue);
+
+            Debug.DrawRay(targetLossPoint, Vector3.up * 5, Color.red);
+            //draw a line to the nearest corner
+            if ((nearestCorner - transform.position).magnitude <= objectsInTrigger.radiusVision)
+                Debug.DrawRay(transform.position, nearestCorner - transform.position, Color.white);
         #endif
     }
 
@@ -205,6 +204,7 @@ public class SoldierVision : MonoBehaviour
         if (setListsConstructAndCorner)
         {
             nearestCorner = tempNearestCorner;
+            directionToNearestCorner = (nearestCorner - transform.position).normalized;
             visibleCorners.Clear();
             visibleCorners.AddRange(tempVisibleCorners);
             visibleConstructions.Clear();
@@ -213,6 +213,18 @@ public class SoldierVision : MonoBehaviour
             tempConstructionsInTrigger.AddRange(objectsInTrigger.constructionsInTrigg);
             StartCoroutine(CreateVisibleConstructionsAndCorners(tempConstructionsInTrigger, tempVisibleConstruction, tempVisibleCorners));
         }
+    }
+
+    private void SeeWhereGoing(float minTime, float maxTime)
+    {
+        movementPoint = soldierMovement.movement + transform.position;
+
+        if (AimRotation(movementPoint, speedRotation, 0.997f))
+            lookWhereGoTimer = Random.Range(minTime, maxTime);
+
+        #if UNITY_EDITOR
+            Debug.DrawRay(transform.position, Vector3.up * 4, Color.magenta);
+        #endif
     }
 
     private Vector3 BorderFOV(float halfAngle)
@@ -281,8 +293,9 @@ public class SoldierVision : MonoBehaviour
             aimedAtEnemy = false;
             aimedAtTarget = false;
             setSearchValues = false;
-            targetLossPoint = new Vector3(targetLoc.x, targetLoc.y, targetLoc.z);
+            //targetLossPoint = new Vector3(targetLoc.x, targetLoc.y, targetLoc.z);
             enemySearchTimer = Random.Range(minTimer, maxTimer);
+            soldierMovement.SetWalking();
             return true;
         }
         else if (enemySearchTimer > 0)
@@ -318,10 +331,6 @@ public class SoldierVision : MonoBehaviour
             }
             else
                 RotateToTarget(targetLossPoint, speedRotation);
-
-            #if UNITY_EDITOR
-                Debug.DrawRay(transform.position, searchDirection, Color.white);
-            #endif
             return true;
         }
         else
@@ -434,7 +443,7 @@ public class SoldierVision : MonoBehaviour
         setListsConstructAndCorner = true;
     }
 
-    private void InspectRandomCornerOfStructures(float minTimer, float maxTimer)
+    private void InspectRandomSomeCorner(float minTimer, float maxTimer)
     {
         if (setRandomAngleOfShelter)
         {
@@ -450,9 +459,9 @@ public class SoldierVision : MonoBehaviour
             RotateToTarget(cornerPoint, speedRotation);
             rotationTimer -= Time.deltaTime;
 
-        #if UNITY_EDITOR
-            Debug.DrawRay(transform.position, cornerPoint - transform.position, Color.yellow);
-        #endif
+            #if UNITY_EDITOR
+                Debug.DrawRay(transform.position, cornerPoint - transform.position, Color.yellow);
+            #endif
         }
         else
         {
@@ -462,7 +471,7 @@ public class SoldierVision : MonoBehaviour
         }
     }
 
-    private void InspectRandomCorner(float minTimer, float maxTimer)
+    private void InspectRandomAllCorner(float minTimer, float maxTimer)
     {
         if (setRandomAngleOfShelter)
         {
@@ -534,44 +543,27 @@ public class SoldierVision : MonoBehaviour
             {
                 sqrLengthTest = directionTarget.sqrMagnitude;
 
-                #if UNITY_EDITOR
-                    Debug.DrawRay(transform.position, directionTarget, Color.red);
-                #endif
-
-                if (sqrLengthTest < 10)
-                {
-                    sqrLengthNearEnemy = sqrLengthTest;
-                    target = coll.transform;
-                    findedNearestEnemy = true;
-                }
+                if (sqrLengthTest < 9)
+                    SetEnemyOptions(coll);
                 else if (IsVisibleInFOV(directionTarget))
                 {
                     if (sqrLengthTest < sqrLengthNearEnemy || sqrLengthNearEnemy == 0)
-                    {
-                        sqrLengthNearEnemy = sqrLengthTest;
-                        target = coll.transform;
-                        findedNearestEnemy = true;
-                    }
+                        SetEnemyOptions(coll);
                 }
             }
+        }  
+    }
 
-            //if (IsVisibleInFOV(directionTarget) && RayHitTest(coll.transform, directionTarget))
-            //{
-            //    sqrLengthTest = directionTarget.sqrMagnitude;
+    private void SetEnemyOptions(Collider coll)
+    {
+        findedNearestEnemy = true;
+        sqrLengthNearEnemy = sqrLengthTest;
+        target = coll.transform;
+        targetLossPoint = target.position;
 
-            //    #if UNITY_EDITOR
-            //        Debug.DrawRay(transform.position, directionTarget, Color.red);
-            //    #endif
-
-            //    if (sqrLengthTest < sqrLengthNearEnemy || sqrLengthNearEnemy == 0)
-            //    {
-            //        sqrLengthNearEnemy = sqrLengthTest;
-            //        target = coll.transform;
-            //        findedNearestEnemy = true;
-            //    }
-            //}
-        }
-        
+        #if UNITY_EDITOR
+            Debug.DrawRay(transform.position, directionTarget, Color.red);
+        #endif
     }
 
     private bool AimRotation(Vector3 position, float speedRot, float dotPrecision)

@@ -1,6 +1,5 @@
 using System.Collections;
 using System.Collections.Generic;
-using TMPro;
 using UnityEngine;
 
 public class SoldierMovement : MonoBehaviour
@@ -10,18 +9,24 @@ public class SoldierMovement : MonoBehaviour
 
     private Rigidbody rb;
 
-    public Transform target;
+    [SerializeField] private LayerMask layerStruct;
 
+    [HideInInspector] public Transform target;
+
+    [HideInInspector] public Vector3 position;
     [HideInInspector] public Vector3 movement = Vector3.zero;
     [HideInInspector] public Vector3 crashedPoint;
-    private Vector3 retreatDirection;
+    private Vector3 direction;
     private Vector3 directionToTarget;
     private Vector3 movementAround;
+    private Vector3 pathToTarget;
 
-    [HideInInspector] public float movingTimer;
+    [HideInInspector] public float backFromOurTimer;
     public float advanceCoeff = 0.5f;
     public float walkVelocity = 2.8f;
     public float runEnergyTime = 8;
+    private float movingTimer;
+    private float backFromEnemyTimer;
     private float sqrMaxVelocity;
     private float sqrRunVelocity;
     private float sqrWalkVelocity;
@@ -34,19 +39,21 @@ public class SoldierMovement : MonoBehaviour
     private float inputZ;
     private float randState;
     private float dot;
-    public float backTimer;
+    private float raycastTimer;
+    private float raycastTime = 3;
+    private float sqrLenthToTarget;
 
     public int minNumOfFreeMov = 1;
     public int maxNumOfFreeMov = 6;
     private int numberOfFreeMovement;
 
+    public bool setSkipOur;
+    public bool takePosition;
     public bool setBack;
-    public bool setSkip;
     public bool goAway;
     public bool backToTeam;
     public bool crashed;
     public bool moveUseKeyboard;
-    public bool seeWhereGoing;
     public bool setBrakingValues = true;
     public bool setMovingToShelter = true;
     public bool setRightOrLeft = true;
@@ -76,6 +83,7 @@ public class SoldierMovement : MonoBehaviour
         sqrRunVelocity = sqrWalkVelocity * 2 * 2;
         sqrMaxVelocity = sqrWalkVelocity;
         numberOfFreeMovement = Random.Range(minNumOfFreeMov, maxNumOfFreeMov);
+        raycastTimer = raycastTime;
     }
 
     void Update()
@@ -109,6 +117,7 @@ public class SoldierMovement : MonoBehaviour
                 setMoving = true;
                 setMovingToEnemy = true;
             }
+            movement = (soldierVision.oppositePoint - transform.position).normalized;
         }
 
         else if (goAway)
@@ -118,7 +127,17 @@ public class SoldierMovement : MonoBehaviour
             AdvanceRetreatRegardingEnemy();
 
         else if (soldierVision.enemyWasVisible)
+        {
             AdvanceRetreatInSearch(soldierVision.targetLossPoint);
+            //soldierVision.enemyWasVisible = GoalNotAchieved(soldierVision.targetLossPoint);
+        }
+
+        else if (takePosition)
+        {
+            SetWalking();
+            MoveToPosition(position);
+            takePosition = GoalNotAchieved(position);
+        }
 
         else if (backToTeam)
             MoveToPosition(target.position);
@@ -158,11 +177,11 @@ public class SoldierMovement : MonoBehaviour
         //when crash into a shelter that have not seen, move away from the shelter
         if (collision.collider.CompareTag("Structures"))
         {
+            SetWalking();
             crashedPoint = collision.contacts[0].point;
             movement = crashedPoint - transform.position;
             movement = -movement.normalized;
-            SetWalking();
-            movingTimer = 1f;
+            movingTimer = 1;
             crashed = true;
             setRightOrLeft = true;
             soldierVision.aimedAtTarget = false;
@@ -185,15 +204,24 @@ public class SoldierMovement : MonoBehaviour
     {
         if (soldierVision.nextToShelter)
         {
-            dot = SetRightOrLeftDot(target);
+            dot = RightOrLeftDot(target);
 
             if (dot > 0)
+            {
                 movement = RightParallelToShelter();
-            else
+                rightMovement = true;
+            }
+            else 
+            { 
                 movement = LeftParallelToShelter();
+                rightMovement = false;
+            }
         }
         else
             Retreat(target);
+
+        if (backFromOurTimer > 0)
+            backFromOurTimer -= Time.deltaTime;
 
         #if UNITY_EDITOR
             Debug.DrawRay(transform.position, target - transform.position, Color.green);
@@ -212,6 +240,16 @@ public class SoldierMovement : MonoBehaviour
         #endif
     }
 
+    private bool GoalNotAchieved(Vector3 target)
+    {
+        sqrLenthToTarget = (target - transform.position).sqrMagnitude;
+
+        if (sqrLenthToTarget < 16)
+            return false;
+        else
+            return true;
+    }
+
     private void AdvanceRetreatRegardingEnemy()
     {
         if (setMovingToEnemy)
@@ -225,32 +263,27 @@ public class SoldierMovement : MonoBehaviour
         {
             if (soldierVision.sqrLengthNearEnemy < 6)
             {
-                backTimer = 1;
+                backFromEnemyTimer = Random.Range(1f, 2f);
                 movement = (transform.position - soldierVision.target.position).normalized;
             }
-            else if (backTimer > 0)
+            else if (backFromEnemyTimer > 0)
             {
-                backTimer -= Time.deltaTime;
+                backFromEnemyTimer -= Time.deltaTime;
 
                 if (soldierVision.nextToShelter)
                 {
-                    dot = SetRightOrLeftDot(soldierVision.target.position);
+                    dot = RightOrLeftDot(soldierVision.target.position);
 
                     if (dot > 0)
                         movement = RightParallelToShelter();
                     else
                         movement = LeftParallelToShelter();
-                    Debug.Log(dot);
                 }
                 else
                     movement = MovingAround(soldierVision.target.position);
-                
             }
             else if (soldierVision.nextToShelter)
-            {
                 AdvanceNearShelter(soldierVision.target.position);
-                Debug.Log("advance nea shelter");
-            }
             else
                 Advance(soldierVision.target.position);
         }
@@ -274,14 +307,7 @@ public class SoldierMovement : MonoBehaviour
             advance = AdvanceOrRetreat(advanceCoeff);
         }
         else if (advance)
-        {
-            if (soldierVision.nextToShelter)
-                MoveToPositionNearShelter(target);
-            else if ((target - transform.position).sqrMagnitude < 6)
-                movement = MovingAround(target);
-            else
-                Advance(target);
-        }
+            MoveToPosition(target);
         else //retreat
         {
             if (soldierVision.nextToShelter)
@@ -318,7 +344,7 @@ public class SoldierMovement : MonoBehaviour
             else
                 aroundToRight = false;
 
-            movingTimer = Random.Range(0.2f, 2f);
+            movingTimer = Random.Range(0.5f, 2f);
 
             return Vector3.zero;
         }
@@ -343,7 +369,7 @@ public class SoldierMovement : MonoBehaviour
         if (setRightOrLeft)
         {
             setRightOrLeft = false;
-            dot = SetRightOrLeftDot(targetPosition);
+            dot = RightOrLeftDot(targetPosition);
 
             if (dot < 0)
                 rightMovement = true;
@@ -351,23 +377,59 @@ public class SoldierMovement : MonoBehaviour
                 rightMovement = false;
         }
         else if (rightMovement)
-            movement = RightParallelToShelter();
+            LeaveShelterOrMoveNearShelter(RightParallelToShelter(), RightParallelToShelter(72), targetPosition);
         else
-            movement = LeftParallelToShelter();
+            LeaveShelterOrMoveNearShelter(LeftParallelToShelter(), LeftParallelToShelter(-72), targetPosition);
+    }
+
+    private void LeaveShelterOrMoveNearShelter(Vector3 parallelDirection, Vector3 turnDirection, Vector3 targetPosition)
+    {
+        if (LeaveShelter(targetPosition))
+            AdvanceNearShelter(targetPosition);
+        else
+        {
+            dot = Vector3.Dot(soldierVision.directionToNearestShelter, soldierVision.directionToNearestCorner);
+
+            if (dot > 0.8)
+                movement = turnDirection; //turn the corner
+            else
+                movement = parallelDirection;
+        }
+    }
+
+    private bool LeaveShelter(Vector3 targetPosition)
+    {
+        if (raycastTimer > 0)
+        {
+            raycastTimer -= Time.deltaTime;
+            return false;
+        }
+        else
+        {
+            pathToTarget = targetPosition - transform.position;
+
+            if (Physics.Raycast(transform.position, pathToTarget, Mathf.Infinity, layerStruct))
+            {
+                raycastTimer = raycastTime;
+                return false;
+            }
+            else
+                return true;
+        }
     }
 
     private void AdvanceNearShelter(Vector3 targetPosition)
     {
         directionToTarget = (targetPosition - transform.position).normalized;
         dot = Vector3.Dot(soldierVision.directionToNearestShelter.normalized, directionToTarget);
-
+       
         if (dot > 0)
         {
-            retreatDirection = RightParallelToShelter();
-            dot = Vector3.Dot(retreatDirection, directionToTarget);
+            direction = RightParallelToShelter();
+            dot = Vector3.Dot(direction, directionToTarget);
 
             if (dot > 0)
-                movement = retreatDirection;
+                movement = direction;
             else
                 movement = LeftParallelToShelter();
         }
@@ -380,7 +442,7 @@ public class SoldierMovement : MonoBehaviour
         if (setRightOrLeft)
         {
             setRightOrLeft = false;
-            dot = SetRightOrLeftDot(targetPosition);
+            dot = RightOrLeftDot(targetPosition);
 
             if (dot > 0)
                 rightMovement = true;
@@ -393,11 +455,11 @@ public class SoldierMovement : MonoBehaviour
             movement = LeftParallelToShelter();
     }
 
-    private float SetRightOrLeftDot(Vector3 targetPosition)
+    private float RightOrLeftDot(Vector3 targetPosition)
     {
         directionToTarget = (transform.position - targetPosition).normalized;
-        retreatDirection = RightParallelToShelter();
-        return Vector3.Dot(directionToTarget, retreatDirection);
+        direction = RightParallelToShelter();
+        return Vector3.Dot(directionToTarget, direction);
     }
 
     private bool AdvanceOrRetreat(float advanceRate)
@@ -410,14 +472,14 @@ public class SoldierMovement : MonoBehaviour
             return false;
     }
 
-    private Vector3 RightParallelToShelter()
+    private Vector3 RightParallelToShelter(int angle = 90)
     {
-        return (Quaternion.Euler(0, 90, 0) * soldierVision.directionToNearestShelter).normalized;
+        return (Quaternion.Euler(0, angle, 0) * soldierVision.directionToNearestShelter).normalized;
     }
 
-    private Vector3 LeftParallelToShelter()
+    private Vector3 LeftParallelToShelter(int angle = -90)
     {
-        return (Quaternion.Euler(0, -90, 0) * soldierVision.directionToNearestShelter).normalized;
+        return (Quaternion.Euler(0, angle, 0) * soldierVision.directionToNearestShelter).normalized;
     }
 
     private void MovementNearShelter()
@@ -425,7 +487,6 @@ public class SoldierMovement : MonoBehaviour
         if (setMoving)
         {
             setMoving = false;
-            seeWhereGoing = true;
             movingTimer = Random.Range(1f, 5f);
             LeaveShelterOrStay(soldierVision.oppositePoint);            
         }
@@ -440,7 +501,6 @@ public class SoldierMovement : MonoBehaviour
         if (setMoving)
         {
             setMoving = false;
-            seeWhereGoing = true;
             movingTimer = Random.Range(1f, 5f);
             inputX = Random.Range(-1f, 1f);
             inputZ = Random.Range(-1f, 1f);
@@ -491,7 +551,6 @@ public class SoldierMovement : MonoBehaviour
             numberOfFreeMovement = Random.Range(minNumOfFreeMov, maxNumOfFreeMov);
             setMovingToShelter = true;
             movingTimer = 2;
-            Debug.Log("Num " + numberOfFreeMovement);
         }
     }
 
@@ -523,7 +582,7 @@ public class SoldierMovement : MonoBehaviour
         running = false;
     }
 
-    private void SetWalking()
+    public void SetWalking()
     {
         standing = false;
         running = false;

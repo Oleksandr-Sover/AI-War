@@ -24,7 +24,8 @@ public class ObjectsInTrigger : MonoBehaviour
 
     void Awake()
     {
-        triggerVision = GetComponent<SphereCollider>();        
+        triggerVision = GetComponent<SphereCollider>();
+        structures = FindObjectOfType<Structures>();
     }
 
     void Start()
@@ -85,7 +86,6 @@ public class ObjectsInTrigger : MonoBehaviour
                         constructionsInTrigg.Remove(construct);
                 }
             }
-
             constructionsExit.Clear();
             exit = false;
         }

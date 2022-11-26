@@ -6,27 +6,19 @@ public class SoldierVision : MonoBehaviour
 {
     public ObjectsInTrigger objectsInTrigger;
     public SoldierMovement soldierMovement;
-    private Structures structures;
-    private Team team;
 
-    [HideInInspector] public List<Construction> visibleConstructions = new List<Construction>();
     private List<Construction> tempVisibleConstruction = new List<Construction>();
     private List<Construction> tempConstructionsInTrigger = new List<Construction>();
     private List<Construction> removeConstructions = new List<Construction>();
+    [HideInInspector] public List<Construction> visibleConstructions = new List<Construction>();
 
-    [HideInInspector] public List<Vector3> visibleCorners = new List<Vector3>();
+    private List<Vector3> visibleCorners = new List<Vector3>();
     private List<Vector3> tempVisibleCorners = new List<Vector3>();
 
     [HideInInspector] public Transform target;
 
     private RaycastHit hit;
 
-    [HideInInspector] public Vector3 oppositePoint;
-    [HideInInspector] public Vector3 directionToNearestShelter;
-    [HideInInspector] public Vector3 directionToNearestCorner;
-    [HideInInspector] public Vector3 nearestPoint;
-    [HideInInspector] public Vector3 targetLossPoint;
-    [HideInInspector] public Vector3 searchDirection;
     private Vector3 nearestCorner;
     private Vector3 tempNearestCorner;
     private Vector3 directionTarget;
@@ -36,22 +28,24 @@ public class SoldierVision : MonoBehaviour
     private Vector3 point;
     private Vector3 direction;
     private Vector3 angularVelocity;
-    private Vector3 angularVelocityRight = new Vector3(0, 35f, 0);
-    private Vector3 angularVelocityLeft = new Vector3(0, -35f, 0);
+    private Vector3 angularVelocityRight;
+    private Vector3 angularVelocityLeft;
     private Vector3 lookAroundPoint;
     private Vector3 movementPoint;
     private Vector3 cornerDirection;
     private Vector3 maxDotCorner;
     private Vector3 dirToCorner;
-    
+    private Vector3 searchDirection;
+    [HideInInspector] public Vector3 oppositePoint;
+    [HideInInspector] public Vector3 directionToNearestShelter;
+    [HideInInspector] public Vector3 directionToNearestCorner;
+    [HideInInspector] public Vector3 targetLossPoint;
+
     private Quaternion quaRotation;
 
     [SerializeField] private LayerMask layerStruct;
+    [SerializeField] private LayerMask layerHit;
 
-    [HideInInspector] public float sqrLengthNearEnemy = 0;
-    public float angleFOV = 80;
-    public float speedAimRotation = 8;
-    public float maxLengthToShelter = 2;
     private float sqrLengthToShelter = 0;
     private float enemySearchTimer;
     private float minLengthToSelter;
@@ -71,32 +65,44 @@ public class SoldierVision : MonoBehaviour
     private float sqrDistanceToHit;
     private float sqrMinDistanceToCorner;
     private float lookWhereGoTimer;
+    [SerializeField] private float angleFOV = 80;
+    [SerializeField] private float speedAimRotation = 8;
+    [SerializeField] private float maxLengthToShelter = 2;
+    [SerializeField] private float minTimeLookWhereGo = 2;
+    [SerializeField] private float maxTimeLookWhereGo = 8;
+    [SerializeField] private float minTimeSearchEnemy = 10;
+    [SerializeField] private float maxTimeSearchEnemy = 20;
+    [SerializeField] private float minTimeInspAllCorner = 1.5f;
+    [SerializeField] private float maxTimeInspAllCorner = 2.5f;
+    [SerializeField] private float minTimeInspSomeCorner = 2;
+    [SerializeField] private float maxTimeInspSomeCorner = 4;
+    [SerializeField] private float minTimeFreeInspectSome = 2.5f;
+    [SerializeField] private float maxTimeFreeInspectSome = 5;
+    [SerializeField] private float minTimeFreeInspection = 1;
+    [SerializeField] private float maxTimeFreeInspection = 5;
+    [HideInInspector] public float sqrLengthNearEnemy = 0;
 
     private int cornerIndex;
     private int numberViewsShelters;
     private int numberFreeInspection;
-    public int minNumViewsShelters = 1;
-    public int maxNumViewsShelters = 4;
-    public int minNumFreeInspection = 2;
-    public int maxNumFreeInspection = 4;
+    private int sqrEnemyHearingDis;
+    [SerializeField] private int enemyHearingDis = 3;
+    [SerializeField] private int valueOfAngularVelocity = 35;
+    [SerializeField] private int minNumViewsShelters = 1;
+    [SerializeField] private int maxNumViewsShelters = 4;
+    [SerializeField] private int minNumFreeInspection = 2;
+    [SerializeField] private int maxNumFreeInspection = 4;
 
     public bool aimedAtEnemy = false;
-    public bool nextToShelter;
-    public bool tooNearToShelter;
     public bool findedNearestEnemy;
-    public bool aimedAtTarget = false;
     public bool enemyWasVisible;
-    public bool lookWhereGoing;
-    public bool setSearchValues = true;
     private bool setRandomAngleOfShelter = true;
     private bool setLookAroundValues = true;
     private bool setListsConstructAndCorner = true;
-
-    void Awake()
-    {
-        structures = FindObjectOfType<Structures>();
-        team = GetComponentInParent<Team>();
-    }
+    [HideInInspector] public bool nextToShelter;
+    [HideInInspector] public bool tooNearToShelter;
+    [HideInInspector] public bool aimedAtTarget = false;
+    [HideInInspector] public bool setSearchValues = true;
 
     void Start()
     {
@@ -107,7 +113,10 @@ public class SoldierVision : MonoBehaviour
         minLengthToSelter = maxLengthToShelter / 2;
         maxSqrLengthToShelter = maxLengthToShelter * maxLengthToShelter;
         minSqrLengthToSelter = minLengthToSelter * minLengthToSelter;
-        lookWhereGoTimer = Random.Range(2f, 8f);
+        lookWhereGoTimer = Random.Range(minTimeLookWhereGo, maxTimeLookWhereGo);
+        angularVelocityRight = new Vector3(0, valueOfAngularVelocity, 0);
+        angularVelocityLeft = new Vector3(0, -valueOfAngularVelocity, 0);
+        sqrEnemyHearingDis = enemyHearingDis * enemyHearingDis;
     }
 
     void Update()
@@ -116,14 +125,16 @@ public class SoldierVision : MonoBehaviour
             //find the nearest enemy in the field of view and visibility
             FindNearestEnemy(objectsInTrigger.enemiesInTrigg);
         else if (findedNearestEnemy)
+        {
+            aimedAtEnemy = false;
             findedNearestEnemy = false;
+        }
 
         if (visibleConstructions.Count > 0)
         {
             //if the soldier is approaching the shelter, we pass the opposite point of the shelter
             //for inspection
             IsItNearConstruction(visibleConstructions, maxSqrLengthToShelter, minSqrLengthToSelter);
-            Debug.DrawRay(transform.position, directionToNearestShelter, Color.white);
         }
         else
         {
@@ -157,12 +168,13 @@ public class SoldierVision : MonoBehaviour
 
         else if (lookWhereGoTimer < 0 && soldierMovement.movement != Vector3.zero)
             //periodically checks where are going
-            SeeWhereGoing(2f, 8f);
+            SeeWhereGoing(minTimeLookWhereGo, maxTimeLookWhereGo);
 
         else if (enemyWasVisible)
         {
+            aimedAtEnemy = false;
             //trace the position where the enemy disappeared  
-            enemyWasVisible = SeeWhereEnemyMightAppear(targetLossPoint, 10, 20);
+            enemyWasVisible = SeeWhereEnemyMightAppear(targetLossPoint, minTimeSearchEnemy, maxTimeSearchEnemy);
         }
 
         else if (nextToShelter)
@@ -171,31 +183,28 @@ public class SoldierVision : MonoBehaviour
 
         else if (visibleCorners.Count > 3)
             //inspect all visible corner of shelters one by one, randomly
-            InspectRandomAllCorner(1.5f, 2.5f);
+            InspectRandomAllCorner(minTimeInspAllCorner, maxTimeInspAllCorner);
 
         else if (visibleCorners.Count > 0)
         {
             if (numberViewsShelters > 0)
-                //
-                InspectRandomSomeCorner(2f, 4f);
+                //inspect the corners randomly, a given number of times
+                InspectRandomSomeCorner(minTimeInspSomeCorner, maxTimeInspSomeCorner);
             else
-                //
-                FreeInspectBetweenInspection();
+                //search inspection with random rotation, a given number of times
+                FreeInspectBetweenInspection(minTimeFreeInspectSome, maxTimeFreeInspectSome);
         }
 
         else
             //search inspection with random rotation
-            FreeInspection();
+            FreeInspection(minTimeFreeInspection, maxTimeFreeInspection);
 
         #if UNITY_EDITOR
             //draw borders of the review of the soldier
-            Debug.DrawRay(transform.position, BorderFOV(halfAngleFOV), Color.blue);
-            Debug.DrawRay(transform.position, BorderFOV(-halfAngleFOV), Color.blue);
-
+            //Debug.DrawRay(transform.position, BorderFOV(halfAngleFOV), Color.blue);
+            //Debug.DrawRay(transform.position, BorderFOV(-halfAngleFOV), Color.blue);
+            //draw the position of the enemy where it was visible
             Debug.DrawRay(targetLossPoint, Vector3.up * 5, Color.red);
-            //draw a line to the nearest corner
-            if ((nearestCorner - transform.position).magnitude <= objectsInTrigger.radiusVision)
-                Debug.DrawRay(transform.position, nearestCorner - transform.position, Color.white);
         #endif
     }
 
@@ -223,7 +232,7 @@ public class SoldierVision : MonoBehaviour
             lookWhereGoTimer = Random.Range(minTime, maxTime);
 
         #if UNITY_EDITOR
-            Debug.DrawRay(transform.position, Vector3.up * 4, Color.magenta);
+            Debug.DrawRay(transform.position, Vector3.up * 6, Color.magenta);
         #endif
     }
 
@@ -232,11 +241,11 @@ public class SoldierVision : MonoBehaviour
         return Quaternion.Euler(0, halfAngle, 0) * transform.forward * objectsInTrigger.radiusVision;
     }
 
-    private void FreeInspectBetweenInspection()
+    private void FreeInspectBetweenInspection(float minTime, float maxTime)
     {
         if (rotationTimer < 0)
         {
-            rotationTimer = Random.Range(2.5f, 5f);
+            rotationTimer = Random.Range(minTime, maxTime);
             angularVelocity = RandomDirectionOfRotation();
             numberFreeInspection--;
 
@@ -247,11 +256,11 @@ public class SoldierVision : MonoBehaviour
             SearchRotation(angularVelocity);
     }
 
-    private void FreeInspection()
+    private void FreeInspection(float minTime, float maxTime)
     {
         if (rotationTimer < 0)
         {
-            rotationTimer = Random.Range(1f, 5f);
+            rotationTimer = Random.Range(minTime, maxTime);
             angularVelocity = RandomDirectionOfRotation();
         }
         else
@@ -293,7 +302,6 @@ public class SoldierVision : MonoBehaviour
             aimedAtEnemy = false;
             aimedAtTarget = false;
             setSearchValues = false;
-            //targetLossPoint = new Vector3(targetLoc.x, targetLoc.y, targetLoc.z);
             enemySearchTimer = Random.Range(minTimer, maxTimer);
             soldierMovement.SetWalking();
             return true;
@@ -356,7 +364,6 @@ public class SoldierVision : MonoBehaviour
             {
                 sqrLengthToShelter = sqrLengthToShelterTest;
                 directionToNearestShelter = direction;
-                nearestPoint = point;
             }
         }
 
@@ -404,8 +411,8 @@ public class SoldierVision : MonoBehaviour
                 direction = point - transform.position;
 
                 if (IsVisibleInFOV(direction)
-                || RayHitTest(construction.ConstructCollider.transform, BorderFOV(halfAngleFOV))
-                || RayHitTest(construction.ConstructCollider.transform, BorderFOV(-halfAngleFOV)))
+                || RayHitTest(construction.ConstructCollider.transform, BorderFOV(halfAngleFOV), layerStruct)
+                || RayHitTest(construction.ConstructCollider.transform, BorderFOV(-halfAngleFOV), layerStruct))
                     tempVisibleConstruct.Add(construction);
             }
         }
@@ -424,8 +431,8 @@ public class SoldierVision : MonoBehaviour
                 {
                     sqrDistanceToCorner = dirToCorner.sqrMagnitude;
                     sqrDistanceToHit = (hit.point - transform.position).sqrMagnitude;
-                    sqrDistanceToHit += 0.2f; //accuracy is reduced
-
+                    sqrDistanceToHit += 0.5f; //accuracy is reduced
+                    
                     if (sqrDistanceToHit > sqrDistanceToCorner)
                     {
                         tempVisibleCorners.Add(corner);
@@ -534,21 +541,25 @@ public class SoldierVision : MonoBehaviour
     {
         sqrLengthNearEnemy = 0;
         findedNearestEnemy = false;
+        aimedAtEnemy = false;
         
         foreach (var coll in collidders)
         {
-            directionTarget = coll.transform.position - transform.position;
-
-            if (RayHitTest(coll.transform, directionTarget))
+            if (!coll.CompareTag("Ded"))
             {
-                sqrLengthTest = directionTarget.sqrMagnitude;
+                directionTarget = coll.transform.position - transform.position;
 
-                if (sqrLengthTest < 9)
-                    SetEnemyOptions(coll);
-                else if (IsVisibleInFOV(directionTarget))
+                if (RayHitTest(coll.transform, directionTarget, layerHit))
                 {
-                    if (sqrLengthTest < sqrLengthNearEnemy || sqrLengthNearEnemy == 0)
+                    sqrLengthTest = directionTarget.sqrMagnitude;
+
+                    if (sqrLengthTest < sqrEnemyHearingDis)
                         SetEnemyOptions(coll);
+                    else if (IsVisibleInFOV(directionTarget))
+                    {
+                        if (sqrLengthTest < sqrLengthNearEnemy || sqrLengthNearEnemy == 0)
+                            SetEnemyOptions(coll);
+                    }
                 }
             }
         }  
@@ -600,9 +611,9 @@ public class SoldierVision : MonoBehaviour
             return false;
     }
     
-    private bool RayHitTest(Transform tr, Vector3 dirTarget)
+    private bool RayHitTest(Transform tr, Vector3 dirTarget, LayerMask mask)
     {
-        if (Physics.Raycast(transform.position, dirTarget, out hit) && tr == hit.transform)
+        if (Physics.Raycast(transform.position, dirTarget, out hit, Mathf.Infinity, mask) && tr == hit.transform)
             return true;
         else
             return false;
@@ -626,7 +637,7 @@ public class SoldierVision : MonoBehaviour
 
             foreach (var corner in visibleCorners)
             {
-                Gizmos.DrawRay(corner, Vector3.up * 4);
+                Gizmos.DrawRay(corner, Vector3.up * 6);
             }
         }
     }

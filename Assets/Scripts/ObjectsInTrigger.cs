@@ -4,20 +4,22 @@ using UnityEngine;
 
 public class ObjectsInTrigger : MonoBehaviour
 {
-    public Structures structures;
+    private Structures structures;
 
     [HideInInspector] public List<Collider> enemiesInTrigg = new List<Collider>();
-    [HideInInspector] public List<Collider> ourTeamInTrigg = new List<Collider>(); //temporary list
-    private List<Collider> constructionsEnter = new List<Collider>();
-    private List<Collider> constructionsExit = new List<Collider>();
 
     [HideInInspector] public List<Construction> constructionsInTrigg = new List<Construction>();
 
+    private List<Collider> constructionsEnter = new List<Collider>();
+    private List<Collider> constructionsExit = new List<Collider>();
+
     private SphereCollider triggerVision;
 
-    public string ourNameTag;
+    private string ourNameTag;
 
     public float radiusVision = 10f;
+
+    [HideInInspector] public int numTeamsLayer;
 
     private bool enter;
     private bool exit;
@@ -30,33 +32,29 @@ public class ObjectsInTrigger : MonoBehaviour
 
     void Start()
     {
-        ourNameTag = transform.parent.tag;
+        ourNameTag = GetComponentInParent<SoldierCondition>().ourNameTag;
         triggerVision.radius = radiusVision;
     }
 
     private void OnTriggerEnter(Collider other)
     {
-        if (other.CompareTag(ourNameTag))
-            ourTeamInTrigg.Add(other);
-        else if (other.CompareTag("Structures"))
+        if (other.CompareTag("Structures"))
         {
             enter = true;
             constructionsEnter.Add(other);
         }
-        else
+        else if (other.gameObject.layer == numTeamsLayer && !other.CompareTag(ourNameTag) && !other.CompareTag("Ded"))
             enemiesInTrigg.Add(other);
     }
 
     private void OnTriggerExit(Collider other)
     {
-        if (other.CompareTag(ourNameTag))
-            ourTeamInTrigg.Remove(other);
-        else if (other.CompareTag("Structures"))
+        if (other.CompareTag("Structures"))
         {
             exit = true;
             constructionsExit.Add(other);
         }
-        else
+        else if (other.gameObject.layer == numTeamsLayer && !other.CompareTag(ourNameTag))
             enemiesInTrigg.Remove(other);
     }
 

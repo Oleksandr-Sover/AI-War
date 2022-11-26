@@ -1,29 +1,41 @@
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 
 public class SoldierMovement : MonoBehaviour
 {
     public SoldierVision soldierVision;
     public ObjectsInTrigger objectsInTrigger;
+    private Team team;
+
+    private PointsOfMoving pointsOfMoving;
+
+    private List<Point> movingPoints;
+
+    private Point nearestMovePoint;
+    private Point previousPoint;
+    private Point nextPoint;
 
     private Rigidbody rb;
 
     [SerializeField] private LayerMask layerStruct;
+    [SerializeField] private LayerMask hitPointLayer;
 
     [HideInInspector] public Transform target;
 
-    [HideInInspector] public Vector3 position;
-    [HideInInspector] public Vector3 movement = Vector3.zero;
-    [HideInInspector] public Vector3 crashedPoint;
+    private RaycastHit hit;
+
     private Vector3 direction;
+    private Vector3 directionToPoint;
+    private Vector3 directionToGoal;
     private Vector3 directionToTarget;
     private Vector3 movementAround;
     private Vector3 pathToTarget;
+    [HideInInspector] public Vector3 position;
+    [HideInInspector] public Vector3 movement = Vector3.zero;
+    [HideInInspector] public Vector3 crashedPoint;
 
-    [HideInInspector] public float backFromOurTimer;
-    public float advanceCoeff = 0.5f;
-    public float walkVelocity = 2.8f;
     public float runEnergyTime = 8;
     private float movingTimer;
     private float backFromEnemyTimer;
@@ -34,43 +46,62 @@ public class SoldierMovement : MonoBehaviour
     private float runForceVelocity;
     private float walkForceVelocity;
     private float brakeForceVelocity;
-    private float runEnergyTimer;
     private float inputX;
     private float inputZ;
     private float randState;
     private float dot;
+    private float goalDot;
+    private float maxGoalDot;
     private float raycastTimer;
-    private float raycastTime = 3;
     private float sqrLenthToTarget;
+    [SerializeField] private float walkVelocity = 2.6f;
+    [SerializeField] private float stayInShelterCoeff = 0.85f;
+    [SerializeField] private float standNearShelter = 0.2f;
+    [SerializeField] private float minTimeFreeMovement = 1;
+    [SerializeField] private float maxTimeFreeMovement = 6;
+    [SerializeField] private float minTimeNearShelter = 2;
+    [SerializeField] private float maxTimeNearShelter = 5;
+    [SerializeField] private float minTimeMovingAround = 0.5f;
+    [SerializeField] private float maxTimeMovingAround = 2;
+    [SerializeField] private float minTimeBackFromEnemy = 1;
+    [SerializeField] private float maxTimeBackFromEnemy = 2;
+    [HideInInspector] public float backFromOurTimer;
+    [HideInInspector] public float runEnergyTimer;
 
-    public int minNumOfFreeMov = 1;
-    public int maxNumOfFreeMov = 6;
+    private int raycastTime = 3;
     private int numberOfFreeMovement;
+    private int sqrDisToReachTarget;
+    private int sqrMaxDisToEnemy;
+    [SerializeField] private int maxDisToEnemy = 4;
+    [SerializeField] private int disToReachTarget = 4;
+    [SerializeField] private int minNumOfFreeMov = 1;
+    [SerializeField] private int maxNumOfFreeMov = 6;
 
-    public bool setSkipOur;
-    public bool takePosition;
-    public bool setBack;
-    public bool goAway;
-    public bool backToTeam;
-    public bool crashed;
-    public bool moveUseKeyboard;
-    public bool setBrakingValues = true;
-    public bool setMovingToShelter = true;
-    public bool setRightOrLeft = true;
+    public bool advance;
     private bool setMoving = true;
     private bool setMovingToEnemy = true;
     private bool setMovingToTarget = true;
     private bool setMovingAround = true;
     private bool aroundToRight;
-    [SerializeField] private bool rightMovement;
-    [SerializeField] private bool advance;
-    [SerializeField] private bool running;
-    [SerializeField] private bool standing;
-    [SerializeField] private bool forceRb;
+    private bool rightMovement;
+    private bool forceRb;
+    [SerializeField] private bool moveUseKeyboard;
+    [HideInInspector] public bool running;
+    [HideInInspector] public bool standing;
+    [HideInInspector] public bool takePosition;
+    [HideInInspector] public bool goAway;
+    [HideInInspector] public bool backToTeam;
+    [HideInInspector] public bool crashed;
+    [HideInInspector] public bool setBrakingValues = true;
+    [HideInInspector] public bool setMovingToShelter = true;
+    [HideInInspector] public bool setRightOrLeft = true;
+    [HideInInspector] public bool newGoal;
 
     void Awake()
     {
-        rb = GetComponent<Rigidbody>();        
+        rb = GetComponent<Rigidbody>();
+        team = GetComponentInParent<Team>();
+        pointsOfMoving = FindObjectOfType<PointsOfMoving>();
     }
 
     void Start()
@@ -78,12 +109,14 @@ public class SoldierMovement : MonoBehaviour
         runEnergyTimer = runEnergyTime;
         walkForceVelocity = walkVelocity * 2.5f;
         runForceVelocity = walkForceVelocity * 1.2f;
-        brakeForceVelocity = walkForceVelocity * 1.8f;
+        brakeForceVelocity = walkForceVelocity * 2f;
         sqrWalkVelocity = walkVelocity * walkVelocity;
         sqrRunVelocity = sqrWalkVelocity * 2 * 2;
         sqrMaxVelocity = sqrWalkVelocity;
         numberOfFreeMovement = Random.Range(minNumOfFreeMov, maxNumOfFreeMov);
         raycastTimer = raycastTime;
+        sqrDisToReachTarget = disToReachTarget * disToReachTarget;
+        sqrMaxDisToEnemy = maxDisToEnemy * maxDisToEnemy;
     }
 
     void Update()
@@ -127,16 +160,12 @@ public class SoldierMovement : MonoBehaviour
             AdvanceRetreatRegardingEnemy();
 
         else if (soldierVision.enemyWasVisible)
-        {
             AdvanceRetreatInSearch(soldierVision.targetLossPoint);
-            //soldierVision.enemyWasVisible = GoalNotAchieved(soldierVision.targetLossPoint);
-        }
 
         else if (takePosition)
         {
-            SetWalking();
-            MoveToPosition(position);
-            takePosition = GoalNotAchieved(position);
+            MoveToPosition(BuildingRoute(position));
+            takePosition = !GoalAchieved(position);
         }
 
         else if (backToTeam)
@@ -151,7 +180,6 @@ public class SoldierMovement : MonoBehaviour
             {
                 setMovingToShelter = false;
                 movement = soldierVision.directionToNearestShelter.normalized;
-                SetRunning();
             }
         }
 
@@ -163,13 +191,19 @@ public class SoldierMovement : MonoBehaviour
         #if UNITY_EDITOR
             Debug.DrawRay(transform.position, movement * forceVelocity, Color.magenta);
             Debug.DrawRay(transform.position, rb.velocity, Color.cyan);
+            if (previousPoint != null)
+            { 
+                Debug.DrawRay(previousPoint.thisPoint.transform.position, Vector3.up * 10, Color.white);
+            }
         #endif
     }
 
     void FixedUpdate()
     {
         if (forceRb)
-            rb.AddForce(movement * forceVelocity, ForceMode.Force);
+        {
+            rb.AddForce(CorrectYMovment(movement) * forceVelocity, ForceMode.Force);
+        }
     }
 
     private void OnCollisionEnter(Collision collision)
@@ -185,7 +219,87 @@ public class SoldierMovement : MonoBehaviour
             crashed = true;
             setRightOrLeft = true;
             soldierVision.aimedAtTarget = false;
-        }   
+        }
+    }
+
+    private Vector3 CorrectYMovment(Vector3 movement)
+    {
+        movement = movement + transform.position;
+        movement.y = transform.position.y;
+        return movement - transform.position;
+    }
+
+    private Vector3 BuildingRoute(Vector3 Goal)
+    {
+        if (newGoal)
+        {
+            newGoal = false;
+            FindNearestMovingPoint();
+            return Goal;
+        }
+        else if (GoalAchieved(nearestMovePoint.thisPoint.transform.position))
+            return ChooseNextPoint(Goal);
+        else
+            return nearestMovePoint.thisPoint.transform.position;
+    }
+
+    private void FindNearestMovingPoint()
+    {
+        foreach (var point in pointsOfMoving.points)
+            point.sqrDistance = (point.thisPoint.transform.position - transform.position).sqrMagnitude;
+
+        //sort the list of points, from smallest to largest, by distance from the soldier
+        movingPoints = pointsOfMoving.points.OrderBy(p => p.sqrDistance).ToList();
+
+        foreach (var point in movingPoints) //set nearest visible moving point
+        {
+            directionToPoint = point.thisPoint.transform.position - transform.position;
+
+            if (Physics.Raycast(transform.position, directionToPoint, out hit, Mathf.Infinity, hitPointLayer))
+                if (hit.collider == point.thisPoint)
+                {
+                    nearestMovePoint = point;
+                    break;
+                }
+        }
+    }
+
+    private Vector3 ChooseNextPoint(Vector3 goal)
+    {
+        maxGoalDot = 0;
+
+        if (nearestMovePoint.neighborPoints.Count > 2)
+        {
+            for (int i = 0; i < nearestMovePoint.neighborPoints.Count; i++)
+            {
+                if (nearestMovePoint.neighborPoints[i] != previousPoint)
+                {
+                    directionToGoal = (goal - nearestMovePoint.thisPoint.transform.position).normalized;
+                    goalDot = Vector3.Dot(directionToGoal, nearestMovePoint.directionsToPoint[i]);
+
+                    if (goalDot > maxGoalDot || maxGoalDot == 0)
+                    {
+                        maxGoalDot = goalDot;
+                        nextPoint = nearestMovePoint.neighborPoints[i];
+                    }
+                }
+            }
+            previousPoint = nearestMovePoint;
+            nearestMovePoint = nextPoint;
+        }
+        else
+        {
+            foreach (var neighPoint in nearestMovePoint.neighborPoints)
+            {
+                if (neighPoint != previousPoint)
+                {
+                    previousPoint = nearestMovePoint;
+                    nearestMovePoint = neighPoint;
+                    break;
+                }
+            }
+        }
+        return nearestMovePoint.thisPoint.transform.position;
     }
 
     private void OursCrashed()
@@ -224,7 +338,7 @@ public class SoldierMovement : MonoBehaviour
             backFromOurTimer -= Time.deltaTime;
 
         #if UNITY_EDITOR
-            Debug.DrawRay(transform.position, target - transform.position, Color.green);
+            Debug.DrawRay(transform.position, target - transform.position, Color.gray);
         #endif
     }
 
@@ -240,14 +354,14 @@ public class SoldierMovement : MonoBehaviour
         #endif
     }
 
-    private bool GoalNotAchieved(Vector3 target)
+    private bool GoalAchieved(Vector3 target)
     {
         sqrLenthToTarget = (target - transform.position).sqrMagnitude;
 
-        if (sqrLenthToTarget < 16)
-            return false;
-        else
+        if (sqrLenthToTarget < sqrDisToReachTarget)
             return true;
+        else
+            return false;
     }
 
     private void AdvanceRetreatRegardingEnemy()
@@ -257,13 +371,13 @@ public class SoldierMovement : MonoBehaviour
             setMovingToEnemy = false;
             setMovingAround = true;
             SetWalking();
-            advance = AdvanceOrRetreat(advanceCoeff);
+            advance = AdvanceOrRetreat();
         }
         else if (advance)
         {
-            if (soldierVision.sqrLengthNearEnemy < 6)
+            if (soldierVision.sqrLengthNearEnemy < sqrMaxDisToEnemy)
             {
-                backFromEnemyTimer = Random.Range(1f, 2f);
+                backFromEnemyTimer = Random.Range(minTimeBackFromEnemy, maxTimeBackFromEnemy);
                 movement = (transform.position - soldierVision.target.position).normalized;
             }
             else if (backFromEnemyTimer > 0)
@@ -281,11 +395,19 @@ public class SoldierMovement : MonoBehaviour
                 }
                 else
                     movement = MovingAround(soldierVision.target.position);
+
+                #if UNITY_EDITOR
+                    Debug.DrawRay(transform.position, transform.position - soldierVision.target.position, Color.white);
+                #endif
             }
             else if (soldierVision.nextToShelter)
                 AdvanceNearShelter(soldierVision.target.position);
             else
                 Advance(soldierVision.target.position);
+
+            #if UNITY_EDITOR
+                Debug.DrawRay(transform.position, Vector3.up * 4, Color.red);
+            #endif
         }
         else //retreat
         {
@@ -294,6 +416,10 @@ public class SoldierMovement : MonoBehaviour
             else
                 //moving away from the enemy
                 Retreat(soldierVision.target.position);
+
+            #if UNITY_EDITOR
+                Debug.DrawRay(transform.position, Vector3.up * 4, Color.green);
+            #endif
         }
     }
 
@@ -304,10 +430,16 @@ public class SoldierMovement : MonoBehaviour
             setMovingToTarget = false;
             setMovingAround = true;
             SetWalking();
-            advance = AdvanceOrRetreat(advanceCoeff);
+            advance = AdvanceOrRetreat();
         }
         else if (advance)
+        {
             MoveToPosition(target);
+
+            #if UNITY_EDITOR
+                Debug.DrawRay(transform.position, Vector3.up * 4, Color.red);
+            #endif
+        }
         else //retreat
         {
             if (soldierVision.nextToShelter)
@@ -315,6 +447,10 @@ public class SoldierMovement : MonoBehaviour
             else
                 //moving away from the target
                 Retreat(target);
+
+            #if UNITY_EDITOR
+                Debug.DrawRay(transform.position, Vector3.up * 4, Color.green);
+            #endif
         }
     }
 
@@ -344,7 +480,7 @@ public class SoldierMovement : MonoBehaviour
             else
                 aroundToRight = false;
 
-            movingTimer = Random.Range(0.5f, 2f);
+            movingTimer = Random.Range(minTimeMovingAround, maxTimeMovingAround);
 
             return Vector3.zero;
         }
@@ -411,7 +547,7 @@ public class SoldierMovement : MonoBehaviour
             if (Physics.Raycast(transform.position, pathToTarget, Mathf.Infinity, layerStruct))
             {
                 raycastTimer = raycastTime;
-                return false;
+                return false;                
             }
             else
                 return true;
@@ -462,11 +598,11 @@ public class SoldierMovement : MonoBehaviour
         return Vector3.Dot(directionToTarget, direction);
     }
 
-    private bool AdvanceOrRetreat(float advanceRate)
+    public bool AdvanceOrRetreat()
     {
         randState = Random.value;
 
-        if (randState < advanceRate)
+        if (randState < team.advanceCoeff)
             return true;
         else
             return false;
@@ -487,7 +623,7 @@ public class SoldierMovement : MonoBehaviour
         if (setMoving)
         {
             setMoving = false;
-            movingTimer = Random.Range(1f, 5f);
+            movingTimer = Random.Range(minTimeNearShelter, maxTimeNearShelter);
             LeaveShelterOrStay(soldierVision.oppositePoint);            
         }
         else if (movingTimer > 0)
@@ -501,7 +637,7 @@ public class SoldierMovement : MonoBehaviour
         if (setMoving)
         {
             setMoving = false;
-            movingTimer = Random.Range(1f, 5f);
+            movingTimer = Random.Range(minTimeFreeMovement, maxTimeFreeMovement);
             inputX = Random.Range(-1f, 1f);
             inputZ = Random.Range(-1f, 1f);
             movement = new Vector3(inputX, 0, inputZ);
@@ -531,7 +667,7 @@ public class SoldierMovement : MonoBehaviour
             if (standing)
                 runEnergyTimer += Time.deltaTime;
             else
-                runEnergyTimer += Time.deltaTime / 4;
+                runEnergyTimer += Time.deltaTime / 6;
         }
     }
 
@@ -539,7 +675,7 @@ public class SoldierMovement : MonoBehaviour
     {
         randState = Random.value;
 
-        if (randState > 0.15) //stay in shelter
+        if (randState < stayInShelterCoeff) //stay in shelter
         {
             movement = soldierVision.TurnVectorRightOrLeft(transform.position, position, 90).normalized;
             MovementStateNearShelter();
@@ -558,7 +694,7 @@ public class SoldierMovement : MonoBehaviour
     {
         randState = Random.value;
 
-        if (randState > 0.8) //stand still
+        if (randState < standNearShelter) //stand still
             SetStanding();
         else //move
             SetWalking();
@@ -568,9 +704,9 @@ public class SoldierMovement : MonoBehaviour
     {
         randState = Random.value;
 
-        if (randState < 0.8) //0.8
+        if (randState < 0.75) //0.8
             SetWalking();
-        else if (randState > 0.95) //0.95
+        else if (randState > 0.9) //0.95
             SetRunning();
         else
             SetStanding();
@@ -590,7 +726,7 @@ public class SoldierMovement : MonoBehaviour
         sqrMaxVelocity = sqrWalkVelocity;
     }
 
-    private void SetRunning()
+    public void SetRunning()
     {
         standing = false;
         running = true;

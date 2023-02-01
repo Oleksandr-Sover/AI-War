@@ -1,7 +1,7 @@
 # AI-War
 
 This project is used by me for training and tests to improve my skills in programming and development for Unity.
-![Red text](ifsdlkjflkdsjflsdkjflkdsjfsldk)
+$\color{#D29922}\textsf{\Large\&#x26A0;\kern{0.2cm}\normalsize Warning}$
 - text in red
 + text in green
 ! text in orange

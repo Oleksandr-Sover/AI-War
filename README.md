@@ -1,7 +1,7 @@
 # AI-War
 
 This project is used by me for training and tests to improve my skills in programming and development for Unity.
-`#RRGGBB`
+![Red text](ifsdlkjflkdsjflsdkjflkdsjfsldk)
 - text in red
 + text in green
 ! text in orange

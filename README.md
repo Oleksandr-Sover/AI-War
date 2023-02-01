@@ -1,7 +1,7 @@
 # AI-War
-#0969DA 
-This project is used by me for training and tests to improve my skills in programming and development for Unity.
 
+This project is used by me for training and tests to improve my skills in programming and development for Unity.
+- text in red
 #0969DA 
 
 $${\color{red}Welcome \space \color{lightblue}To \space \color{orange}Stackoverflow}$$
